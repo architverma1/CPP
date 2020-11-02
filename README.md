@@ -42,3 +42,7 @@ Data used for this paper can be found at https://www.dropbox.com/sh/ctrb51chmkyf
 * gfp-figs-Copy1.ipynb: Jupyter notebook to view results. The GFP figure was created in biorender.
 
 ### wound healing
+
+* datadrugsnorm.mat: matlab workspace for pulse data from MDCK wound healing experiments
+* run_wound_cppg_v6.py: Python code for loading data from datadrugsnorm.mat and estimating parameters for each well
+* params-{drug}-exp-g-x10.npz: Output of run_wound_cppg_v6.py, where {drug} corresponds to pharmacological condition
