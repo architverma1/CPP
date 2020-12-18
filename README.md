@@ -1,5 +1,6 @@
 # CPP
-Code for the Cell Point Process (Bioarxiv link to come)
+Code for the Cell Point Process
+https://www.biorxiv.org/content/10.1101/2020.11.04.368001v1
 
 ## Environment
 
