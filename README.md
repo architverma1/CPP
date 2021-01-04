@@ -12,7 +12,7 @@ See Example_Notebook.ipynb for an example of how to simulate data, create a vide
 
 ## In this repo
 
-Data used for this paper can be found at https://www.dropbox.com/sh/ctrb51chmkyfhlt/AABH1A1jBFrVSahljz7VSbWaa?dl=0
+Data (.mat files) used for this paper can be found at https://www.dropbox.com/sh/ctrb51chmkyfhlt/AABH1A1jBFrVSahljz7VSbWaa?dl=0
 
 ### frontier
 
