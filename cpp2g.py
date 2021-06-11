@@ -900,3 +900,192 @@ class CPP2:
         print('Final logL: ' + str(loss.item()) + ' at iteration ' + str(i))
         self.loss = loss.item()
         return
+    
+    
+    def lambda_i(self, y_sorted, cells_sorted, d, clusters, 
+                 mu, a, ajj, b, bjj, epsilon, peak,
+                 debug = False, a_prior = False, alpha = .001, beta = .001,
+                 kernel = 'fixed', control = False):
+        
+        nc = len(y_sorted)
+        N = d.shape[0]
+        D = torch.tensor(d)
+        
+        
+        
+        if kernel is None or kernel == 'logistic':
+            sharpness = self.sharpness
+            adj = torch.div(torch.exp(-sharpness*(D - epsilon)), 1. + torch.exp(-sharpness*(D - epsilon)))
+        elif kernel == 'relu':
+            adj = (1./epsilon) * torch.nn.functional.relu(epsilon - D)
+        
+        elif kernel == 'exp':
+            adj = torch.exp(-D/epsilon)
+            
+        elif kernel == 'fixed':
+            adj = D < epsilon
+            
+        else:
+            adj = torch.div(torch.exp(-sharpness*(D - epsilon)), 
+                                                    1. + torch.exp(-sharpness*(D - epsilon)))
+            
+        if control:
+            adj = torch.diag(torch.ones(N))
+        
+        #print(adj)
+        #intermediate = torch.diag(ajj[clusters] - 1.) + torch.ones((N,N))
+        #adj = torch.mul(intermediate, adj)
+        
+        #print(adj)
+        
+        #bjj_adj = torch.diag(bjj[clusters] - 1.) + torch.ones((N,N))
+        #tmax = y_sorted[-1]
+        
+        #print(bjj_adj)
+
+        logL = torch.tensor(0.)
+        
+        
+        #logN = Cauchy(torch.tensor([0.0]), torch.tensor([1.0]))
+        #logN = LogNormal(torch.tensor([0.0]), b)
+        for i in range(peak,peak+1):
+            celli = cells_sorted[i].astype(np.int)
+            #print(celli)
+            
+            whichi = cells_sorted[0:i].astype(np.int)
+            #print(whichi)
+            
+            ai = a[clusters[celli],clusters[whichi]]
+            ai[whichi == celli] = ajj[clusters[celli]]
+            #print('ai')
+            #print(ai)
+            
+            bi = b[clusters[celli],clusters[whichi]]
+            bi[whichi == celli] = bjj[clusters[celli]]
+            b_adj = bi #torch.mul(bi, bjj_adj[celli, cells_sorted[0:i]])
+            #print(b_adj)
+            #print(' ')
+            
+            
+            ti = y_sorted[0:i]
+            yi = torch.tensor(y_sorted[i] - ti)
+            
+            neg_bt = log_normal_pdf(yi,b_adj)
+            a_adj = torch.mul(ai, adj[celli, cells_sorted[0:i]])
+            #print('a')
+            #print(a_adj)
+            #print(' ')
+            
+            abg = torch.mul(a_adj, neg_bt)
+            mui = mu[clusters[celli]]
+            muabg = mui + torch.sum(abg)
+
+            
+            if debug:
+                print('celli')
+                print(celli)
+                print('whichi')
+                print(whichi)
+                print('ai')
+                print(ai)
+                print('bi')
+                print(bi)
+                print('ti')
+                print(ti)
+                print('yi')
+                print(yi)
+                print('neg_bt')
+                print(neg_bt)
+                print('a_adj')
+                print(a_adj)
+                print('b_adj')
+                print(b_adj)
+                print('abg')
+                print(abg)
+                print('mui')
+                print(mui)
+                print('muabg')
+                print(muabg)
+                print(' ')
+                
+        
+        if debug:
+            print('mu[clusters]')
+            print(mu[clusters])
+        
+        return muabg
+    
+    
+    def get_fisher_information(self, mu_hat = None, a_hat = None, ajj_hat = None, b_hat = None, bjj_hat = None, 
+                               epsilon = None):
+        
+        if mu_hat is None:
+            mu_hat = self.get_mu_learned().item()
+            mu_hat = np.multiply(mu_hat, np.ones((self.nclusters,)))
+        if a_hat is None:
+            a_hat = self.get_a_learned().item()
+            a_hat = np.multiply(a_hat, np.ones((self.nclusters,self.nclusters)))
+        if ajj_hat is None:
+            ajj_hat = self.get_ajj_learned().item()
+            ajj_hat = np.multiply(np.multiply(ajj_hat, a_hat), np.ones((self.nclusters,)))
+        if b_hat is None:
+            b_hat = self.get_b_learned().item()
+            b_hat = np.multiply(b_hat, np.ones((self.nclusters,self.nclusters)))
+        if bjj_hat is None:
+            bjj_hat = self.get_bjj_learned().item()
+            bjj_hat = np.multiply(np.multiply(bjj_hat, b_hat), np.ones((self.nclusters,)))
+        if epsilon is None:
+            epsilon = self.get_epsilon_true()
+        else:
+            epsilon = torch.tensor(epsilon)
+            
+
+        npeaks = len(self.y_sorted)
+        
+        Sigma = np.zeros((5,5))
+        
+        for i in range(npeaks):
+            
+            mu = torch.tensor(mu_hat, requires_grad = True)
+            a = torch.tensor(a_hat, requires_grad = True)
+            b = torch.tensor(b_hat, requires_grad = True)
+            ajj = torch.tensor(ajj_hat, requires_grad = True)
+            bjj = torch.tensor(bjj_hat, requires_grad = True)
+        
+            li = self.lambda_i(self.y_sorted, self.cells_sorted, self.d, self.clusters, 
+                               mu, a, ajj, b, bjj, epsilon, i)
+            optimizer = torch.optim.SGD([mu, a, ajj, b, bjj], lr = 1e-4)
+            optimizer.zero_grad()
+            li.backward()
+            dl_dmu = mu.grad.item()
+            dl_da = a.grad.item()
+            #print('a : ' , end = ' ' )
+            #print(dl_da)
+            dl_dajj = ajj.grad.item()
+            dl_db = b.grad.item()
+            #print('b : ' , end = ' ')
+            #print(dl_db)
+            dl_dbjj = bjj.grad.item()
+            #print('bjj : ' , end = ' ')
+            #print(dl_dbjj)
+            
+            #print('li : ' + str(li.item()))
+            
+            dl_all = np.array([dl_dmu, dl_da, dl_dajj, dl_db, dl_dbjj])
+            Sigma += np.outer(dl_all, dl_all)/li.item()
+            #print(Sigma[1,1])
+            #print(Sigma[3,3])
+            
+        return Sigma
+    
+    def get_confidence_intervals(self, mu_hat = None, a_hat = None, ajj_hat = None, b_hat = None, bjj_hat = None, 
+                                  epsilon = None):
+        
+        asymptotic_covariance = np.linalg.inv(self.get_fisher_information(mu_hat, 
+                                                                             a_hat, 
+                                                                             ajj_hat, 
+                                                                             b_hat, 
+                                                                             bjj_hat, 
+                                                                             epsilon))
+        confidence_intervals = 1.96 * np.sqrt(np.diag(asymptotic_covariance))
+        return confidence_intervals
